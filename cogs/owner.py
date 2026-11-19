@@ -1,157 +1,101 @@
-import discord, os , random, logging, aiosqlite, json
+"""Commands for the bot owner(s) only."""
+import logging
 
+import discord
 from discord.ext import commands
+
 from utils import helpers
-from utils.checks import is_owner
-from utils.config import db_path, STATUS_FILE, COGS_DIR
-from utils.prefix import get_prefix
+from utils.config import COGS_DIR
 
-config = json.loads(open(STATUS_FILE, "r").read()) 
+log = logging.getLogger("fendi")
 
-def RandomColor(): 
-    randcolor = discord.Color(random.randint(0x000000, 0xFFFFFF))
-    return randcolor
 
 class Owner(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        
 
-    @commands.command(name='reset_lb', description="Allows the owner to manually reset the message leaderboard", aliases=['resetlb','reset', 'lb-reset', 'reset-lb'])
-    @commands.check(is_owner)
-    async def reset_lb(self, ctx, guild_id: int): 
-        if guild_id == None:
-            await ctx.send(f"Please enter the guild id you wish to reset.")
-        else: 
-            guild = self.bot.get_guild(guild_id)
-            if guild:   
-                async with aiosqlite.connect(db_path("level")) as ab:    
-                    async with ab.cursor() as cursor:
-                        await cursor.execute("SELECT message_count FROM messages WHERE guild = ?", (guild.id,))
-                        data = await cursor.fetchall()
-                        count = 0
-                        if data: 
-                            for item in data: 
-                                count += 1
-                            await cursor.execute("DELETE FROM messages WHERE guild = ?", (guild.id,))
-                            logging.info("✅ Successfully deleted {} users in {} - [{}] from 'level.db'.".format(count, guild.name, guild.id))
-                            await ctx.send(embed=discord.Embed(description="✅ Successfully deleted {} users in {} - [{}] from 'level.db'.".format(count, guild.name, guild.id), colour=0x43b581))
-                        await ab.commit()
-                        await ab.cursor()
-            else: 
-                await ctx.send(embed=discord.Embed(description=f"❌ Could Not Find Server!", colour=0xf04947), delete_after=5)
-                
-    @commands.command(name='reset_user', description="Allows the owner to manually reset a user the message leaderboard", aliases=['resetuser','resetu', 'user-reset', 'reset-user'])
-    @commands.check(is_owner)
-    async def reset_user(self, ctx, *, member: discord.Member = None): 
-        if member == None:
-            await ctx.send(f"Please enter the user id you wish to reset.")
-        elif len(ctx.message.mentions) > 0: 
-            member = ctx.message.mentions[0].id
-        elif len(ctx.message.content) > 0:
-            async with aiosqlite.connect(db_path("prefix")) as db:
-                async with db.cursor() as cursor:
-                    await cursor.execute("SELECT prefix FROM prefixes WHERE guild = ?", (ctx.guild.id,))
-                    data = await cursor.fetchone()
-                    if data: 
-                        prefix = data
-                        thing = ctx.message.content.rsplit(str(prefix))[0].rsplit(" ")
-                        person = ctx.guild.get_member(int(thing[1]))
-                        if person != None: 
-                            member = person.id
-                member=member
-        else: 
-            await ctx.send(embed=discord.Embed(description=f"❌ Could Not Find User!", colour=0xf04947), delete_after=5)
-            
-        async with aiosqlite.connect(db_path("level")) as ab:    
-            async with ab.cursor() as cursor:
-                await cursor.execute("SELECT message_count FROM messages WHERE user = ? AND guild = ?", (member, ctx.guild.id,))
-                data = await cursor.fetchone()
-                if data: 
-                    user = ctx.guild.get_member(member)
-                    await cursor.execute("DELETE FROM messages WHERE user = ? AND guild = ?", (member, ctx.guild.id,))
-                    logging.info("✅ Successfully deleted {} - [{}] with {} messages in {} - [{}] from 'level.db'.".format(user.name, member, data[0], ctx.guild.name, ctx.guild.id))
-                    await ctx.send(embed=discord.Embed(description="✅ Successfully deleted {} - [{}] with {} messages in {} - [{}] from 'level.db'.".format(user.name, member, data[0], ctx.guild.name, ctx.guild.id), colour=0x43b581))
-                await ab.commit()
-                await ab.cursor()
-        
+    async def cog_check(self, ctx):
+        if await self.bot.is_owner(ctx.author):
+            return True
+        raise commands.NotOwner("Only the bot owner can use that command.")
 
-    
-    @commands.command(name="sleave", description="Leaves the server the cmd is ran in.")
-    @commands.check(is_owner)
-    async def sleave(self, ctx, guild_id: int):
-        guild = self.bot.get_guild(guild_id)
-        if guild:
-            await guild.leave()
-            await ctx.send(embed=discord.Embed(description=f"✅ Left **{guild.name}** - {guild.member_count} Members! ({guild_id})", colour=0x43b581))
-        else:
-            await ctx.send(embed=discord.Embed(description=f"❌ Could Not Find Server!", colour=0xf04947), delete_after=5)
+    # -------------------------------------------------------------- leaderboard
+    @commands.command(name="reset_lb", aliases=["resetlb", "reset", "lb-reset", "reset-lb"],
+                      description="Clears a server's message leaderboard (defaults to this server).")
+    async def reset_lb(self, ctx, guild_id: int = None):
+        guild = self.bot.get_guild(guild_id) if guild_id else ctx.guild
+        if guild is None:
+            return await ctx.send(embed=helpers.error_embed("Could not find that server."), delete_after=5)
+        removed = await self.bot.db.reset_guild_messages(guild.id)
+        log.info("Reset leaderboard for %s (%s): %s members cleared", guild.name, guild.id, removed)
+        await ctx.send(embed=helpers.success_embed(f"Cleared **{removed}** members from {guild.name}'s leaderboard."))
 
-    @commands.command(name="reloadall",description="Reloads all cogs.")
-    @commands.check(is_owner)
-    async def reloadall(self, ctx):
-        for filename in os.listdir(COGS_DIR):
-            try:    
-                if filename.endswith('.py') and not filename.startswith("__"):
-                    self.bot.unload_extension(f'cogs.{filename[:-3]}')
-                    self.bot.load_extension(f'cogs.{filename[:-3]}')
-            except Exception as e:
-                print(e)
-        await ctx.send(embed=discord.Embed(description=f"✅ Reloaded Extensions!", colour=0x43b581))
+    @commands.command(name="reset_user", aliases=["resetuser", "resetu", "user-reset", "reset-user"],
+                      description="Clears a user's message count in this server.")
+    async def reset_user(self, ctx, *, user: discord.User):
+        if not await self.bot.db.reset_user_messages(ctx.guild.id, user.id):
+            return await ctx.send(embed=helpers.info_embed(f"{user} has no messages recorded here."))
+        log.info("Reset message count for %s (%s) in %s", user, user.id, ctx.guild.id)
+        await ctx.send(embed=helpers.success_embed(f"Cleared {user.mention}'s message count."))
 
-    @commands.command(name="reload",description="Reloads a specific cog.")
-    @commands.check(is_owner)
-    async def reload(self, ctx, extension):
-        self.bot.unload_extension(f'cogs.{extension}')
-        self.bot.load_extension(f'cogs.{extension}')
-        await ctx.send(embed=discord.Embed(description=f"✅ Reloaded **{extension}!**", colour=0x43b581))
-
-    @commands.command(name="servers", description="Lists the bots Top 5 servers.")
-    @commands.check(is_owner)
+    # ------------------------------------------------------------------- servers
+    @commands.command(name="servers", description="Lists the bot's 5 largest servers.")
     async def servers(self, ctx):
-        servers = self.bot.guilds
-        servers.sort(key=lambda x: x.member_count, reverse=True) 
-        embed = discord.Embed(description="", color=ctx.author.color)
-        embed.set_author(name=f"{self.bot.user.name}'s Top 5 Servers!", icon_url=self.bot.user.avatar_url)
-
-        for x in servers[:5]:
-            embed.description += "{} - {} Members!\n".format(x.name, x.member_count)
-
+        largest = sorted(self.bot.guilds, key=lambda guild: guild.member_count, reverse=True)[:5]
+        lines = [f"**{guild.name}** - {guild.member_count} members" for guild in largest]
+        embed = discord.Embed(description="\n".join(lines) or "No servers.", colour=ctx.author.colour)
+        embed.set_author(name=f"{self.bot.user.name}'s Top Servers", icon_url=self.bot.user.avatar_url)
         await ctx.send(embed=embed)
-    
-    @commands.command(name="toggle", description="Enables or disables a command.")    
-    @commands.check(is_owner)
-    async def toggle(self, ctx, *, command): 
-        command = self.bot.get_command(command)
-        if command is None: await ctx.send(embed=helpers.error("Command doesn't exist")) 
-        
-        elif ctx.command == command: await ctx.send(embed=helpers.error("You cannot disable this command."))
 
-        else:
-            command.enabled = not command.enabled
-            ternary = "enabled" if command.enabled else "disabled"
-            await ctx.send(embed=helpers.success(f"I have  **{ternary}** {command.qualified_name} for you."))
-    
-    @commands.command(name="logout", description="Disconnects the bot from discord.")
-    @commands.check(is_owner)
-    async def logout(self, ctx): 
-        await ctx.send(content=f"{ctx.author.mention}",embed=helpers.success("Logging out... :wave:"))
+    @commands.command(name="sleave", description="Makes the bot leave a server (defaults to this server).")
+    async def sleave(self, ctx, guild_id: int = None):
+        guild = self.bot.get_guild(guild_id) if guild_id else ctx.guild
+        if guild is None:
+            return await ctx.send(embed=helpers.error_embed("Could not find that server."), delete_after=5)
+        if guild != ctx.guild:
+            await ctx.send(embed=helpers.success_embed(f"Leaving **{guild.name}** ({guild.member_count} members)."))
+        await guild.leave()
+
+    # ----------------------------------------------------------------- the bot
+    @commands.command(name="reload", description="Reloads one cog.")
+    async def reload(self, ctx, cog: str):
+        try:
+            self.bot.reload_extension(f"cogs.{cog}")
+        except commands.ExtensionError as error:
+            return await ctx.send(embed=helpers.error_embed(f"Could not reload **{cog}**: {error}"))
+        await ctx.send(embed=helpers.success_embed(f"Reloaded **{cog}**."))
+
+    @commands.command(name="reloadall", description="Reloads every cog.")
+    async def reloadall(self, ctx):
+        failed = []
+        for path in sorted(COGS_DIR.glob("*.py")):
+            if path.name.startswith("_"):
+                continue
+            try:
+                self.bot.reload_extension(f"cogs.{path.stem}")
+            except commands.ExtensionError:
+                log.exception("Could not reload cogs.%s", path.stem)
+                failed.append(path.stem)
+        if failed:
+            return await ctx.send(embed=helpers.error_embed(f"Failed to reload: {', '.join(failed)}"))
+        await ctx.send(embed=helpers.success_embed("Reloaded every cog."))
+
+    @commands.command(name="toggle", description="Enables or disables a command.")
+    async def toggle(self, ctx, *, command_name: str):
+        command = self.bot.get_command(command_name)
+        if command is None:
+            return await ctx.send(embed=helpers.error_embed("That command doesn't exist."))
+        if command == ctx.command:
+            return await ctx.send(embed=helpers.error_embed("You can't disable this command."))
+        command.enabled = not command.enabled
+        state = "enabled" if command.enabled else "disabled"
+        await ctx.send(embed=helpers.success_embed(f"**{command.qualified_name}** is now {state}."))
+
+    @commands.command(name="logout", description="Shuts the bot down.")
+    async def logout(self, ctx):
+        await ctx.send(embed=helpers.success_embed("Logging out... \U0001f44b"))
         await self.bot.close()
-    
-    @commands.command(name="cds", description="his changes the bots default status when on_connect() is called.", aliases=['change-default-status', 'default'])
-    @commands.check(is_owner)
-    async def cds(self, ctx, *, status = None):       # type: ignore
-        prefix = await get_prefix(self, ctx)
-        if status:
-            config['default'] = status
-            open(STATUS_FILE, 'w+').write(json.dumps(config, indent=4, sort_keys=True))
-            
-            await ctx.send(embed=helpers.success(f"Successfully changed the default status to **{status}**"))
-        else: 
-            await ctx.send(embed=helpers.error(f"You need to state a new default status!"))
-        
-    
-        
-        
+
+
 def setup(bot):
     bot.add_cog(Owner(bot))

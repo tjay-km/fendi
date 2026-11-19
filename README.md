@@ -1,66 +1,77 @@
 # Fendi
 
-A multipurpose Discord bot written in Python with [discord.py](https://github.com/Rapptz/discord.py) 1.7.x.
-It covers moderation helpers, a message-based ranking system, server and user info commands,
-status cycling and a few fun commands. Data is stored in local SQLite databases, so there is no
-external database to set up.
+A multipurpose Discord bot I built in Python. It ran across multiple community servers and
+reached **100k+ members at its peak**. It handled message-activity leaderboards, server
+moderation helpers, info commands, rotating statuses and a few fun commands.
 
-> **Legacy project:** it targets discord.py 1.7.3 (Python 3.8-3.9). It has not been ported to
-> discord.py 2.x.
+> **Archived project.** Fendi is no longer running and isn't maintained. It deliberately stays on
+> **discord.py 1.7.3** (the version it ran on) and has not been ported to discord.py 2.x. The code
+> was cleaned up and refactored for publishing, but it is kept as a record of the project rather than
+> a bot to deploy today.
+
+Building it taught me asynchronous Python, event-driven design, SQLite, caching hot paths,
+and how to structure a growing codebase into modules.
+
+## Features
+
+- **Activity leaderboard**: admins choose which channels count, and the bot ranks members by
+  messages sent (`rank`, `leaderboard`).
+- **Per-server settings**: custom prefix and a list of server-level bot admins.
+- **Info commands**: server, member, role, avatar, icon and banner lookups.
+- **Utility**: Urban Dictionary search, emoji enlarging, reverse avatar search and message sniping.
+- **Rotating presence**: the owner can cycle the bot's status through a list on a timer.
+- **Owner tools**: reload cogs, toggle commands, leave servers and reset leaderboards.
 
 ## Commands
 
-The default prefix is `>` and can be changed per server with `setprefix`.
+The default prefix is `>`. You can also mention the bot instead of using a prefix.
 
-| Area | Commands |
+| Category | Commands |
 |---|---|
 | Admin | `setprefix`, `prefix`, `add_owner`, `remove_owner`, `owners` |
-| Ranking | `leaderboard`, `whitelist`, `blacklist`, `whitelisted` |
-| Info | `ping`, `uptime`, `serverinfo`, `userinfo`, `roleinfo`, `avatar`, `stats`, `membercount`, `invite`, `about` |
-| Utility | `serverbanner`, `servericon`, `enlarge`, `urban`, `revav`, `snipe`, `editsnipe` |
+| Ranking | `rank`, `leaderboard`, `whitelist`, `blacklist`, `whitelisted` |
+| Info | `ping`, `uptime`, `stats`, `invite`, `about`, `serverinfo`, `membercount`, `servericon`, `serverbanner`, `userinfo`, `roleinfo`, `avatar` |
+| Utility | `enlarge`, `urban`, `revav`, `snipe`, `editsnipe` |
 | Fun | `pp`, `iq`, `thotrate`, `gayrate`, `height` |
-| Owner only | `reset_lb`, `reset_user`, `sleave`, `reload`, `reloadall`, `servers`, `toggle`, `logout`, `cds` |
-| Status (owner only) | `cycles`, `cycles_add`, `cycles_remove`, `cycles-delay`, `cycle` |
+| Status (owner) | `cycles`, `cycles_add`, `cycles_remove`, `cycles-delay`, `cycle`, `cds` |
+| Owner | `reset_lb`, `reset_user`, `servers`, `sleave`, `reload`, `reloadall`, `toggle`, `logout` |
 
-## Setup
+`help` lists every command you're allowed to use, and `help <command>` shows its usage.
 
-1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications) and
-   enable the Presence and Server Members privileged intents (the bot requests `Intents.all()`).
-2. Install the dependencies (a virtual environment is recommended):
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Create your configuration:
-   ```bash
-   cp info/config.example.json info/config.json
-   ```
-   Fill in `token` and your Discord user ID(s) under `owners`.
-   Alternatively set the environment variables `DISCORD_TOKEN` and `OWNER_IDS` (comma separated);
-   see `.env.example`.
-4. Run the bot:
-   ```bash
-   python fendi.py
-   ```
-
-The `data/` folder (SQLite databases and `status.json`) is created automatically on first run and is
-git-ignored.
-
-## Project layout
+## How it works
 
 ```
-fendi.py        entry point: creates the bot and loads every cog
-cogs/           one file per feature area (admin, ranking, fun, ...)
-utils/config.py  settings, paths and owner IDs (env vars override info/config.json)
-utils/checks.py  is_owner / is_admin permission checks
-utils/prefix.py  per-server prefix lookup
-utils/helpers.py shared embeds and helper functions
-info/           configuration template
+fendi.py            Bot subclass: startup, prefix lookup, global checks, guild join/leave cleanup
+cogs/               one module per feature area, loaded automatically at startup
+utils/config.py     settings from env vars or info/config.json, plus paths and constants
+utils/database.py   single SQLite connection with in-memory caches for hot lookups
+utils/checks.py     bot-owner and per-server admin permission checks
+utils/helpers.py    embed builders, time formatting and console output
 ```
 
-## Security
+- **One database, cached reads.** Prefixes, admins and tracked channels are loaded into memory at
+  startup. The prefix and channel checks that run on *every message* never touch the disk.
+- **Batched writes.** Message counts are upserted in memory and committed every 30 seconds instead
+  of once per message. SQLite runs in WAL mode.
+- **Background tasks.** Status cycling uses `discord.ext.tasks` rather than a blocking loop.
+- **Central error handling.** `cogs/errors.py` turns command errors into short replies and logs
+  anything unexpected with a traceback.
+- **Admins skip cooldowns.** A single bot-wide `after_invoke` hook resets cooldowns for admins.
 
-Never commit `info/config.json` or a real token. If a token ever leaks, regenerate it in the
-Developer Portal immediately.
+## Running it (for reference)
+
+Requirements: Python 3.8 or 3.9 (discord.py 1.7.3 doesn't support newer versions), and a bot with
+the **Presence** and **Server Members** privileged intents enabled.
+
+```bash
+pip install -r requirements.txt
+cp info/config.example.json info/config.json   # add your token and Discord user ID(s)
+python fendi.py
+```
+
+Instead of the config file, you can set `DISCORD_TOKEN`, `OWNER_IDS` (comma separated) and
+`DEFAULT_PREFIX` as environment variables. See `.env.example`. Runtime data (the SQLite database
+and `status.json`) is written to `data/`, which is git-ignored.
 
 ## License
 

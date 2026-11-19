@@ -1,96 +1,74 @@
+"""Paginated help command."""
+from typing import List
 
+import discord
 from discord.ext import commands
-from utils.util import Pag
+from discord.ext.buttons import Paginator
 
-class Help(commands.Cog, name="help"):
+from utils import helpers
+
+COMMANDS_PER_PAGE = 6
+
+
+class HelpPaginator(Paginator):
+    async def teardown(self):
+        try:
+            await self.page.clear_reactions()
+        except discord.HTTPException:
+            pass
+
+
+class Help(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cmds_per_page = 6
 
-    def get_commands_signature(self, command: commands.Command, ctx: commands.Context):
-        aliases = "|".join(command.aliases)
-        cmd_invoke = f"[{command.name}|{aliases}]" if command.aliases else command.name
-        
-        full_invoke = command.qualified_name.replace(command.name, "")
-        
-        signature = f"{ctx.prefix}|{full_invoke} {command.signature}"
-        #signature = f"{str(get_prefix(self,ctx))}|{full_invoke} {command.signature}"
-        return signature
-
-    async def return_filtered_commands(self, walkable, ctx):
-        filtered = [] 
-        
-        for c in walkable.walk_commands():
-            try: 
-                if c.hidden:
-                    continue
-                elif c.parent: 
-                    continue
-                
-                await c.can_run(ctx)
-                filtered.append(c)
-            except commands.CommandError: 
+    @staticmethod
+    async def _usable_commands(source, ctx) -> List[commands.Command]:
+        usable = []
+        for command in source.walk_commands():
+            if command.hidden or command.parent:
                 continue
-        
-        return self.return_sorted_commands(filtered)
-    
-    def return_sorted_commands(self, commandList):
-        return sorted(commandList, key=lambda x: x.name)
+            try:
+                if await command.can_run(ctx):
+                    usable.append(command)
+            except commands.CommandError:
+                continue
+        return sorted(usable, key=lambda command: command.name)
 
-    async def setup_help_pag(self, ctx, entity=None, title=None):
-        entity = entity or self.bot
-        title = title or self.bot.description
-        
-        pages = []
-        
-        if isinstance(entity, commands.Command):
-            filtered_commands = (list(set(entity.all_commands.values()))
-                                 if hasattr(entity, 'all_commands')
-                                 else []
-                                 )
-            filtered_commands.insert(0, entity)
-        
-        else:
-            filtered_commands = await self.return_filtered_commands(entity, ctx)
-        
-        for i in range(0, len(filtered_commands), self.cmds_per_page):
-            next_commands = filtered_commands[i: i + self.cmds_per_page]
-            commands_entry = ""
-            
-            for cmd in next_commands:
-                desc = cmd.short_doc or cmd.description
-                signature = self.get_commands_signature(cmd, ctx)
-                subcommand = "Has subcommands" if hasattr(cmd,"all_commands") else ""
-                
-                commands_entry += (
-                    f"• **__{cmd.name}__**\n```{signature}```\n{desc}\n"
-                    if isinstance(entity, commands.Command)
-                    else f"• **__{cmd.name}__**\n{desc}\n    {subcommand}\n"
-                )
-            pages.append(commands_entry)
-        await Pag(title=title, color=0xf04947, entries=pages, length=1).start(ctx)
-        
-        
-    @commands.command(name="help", aliases=['cmds'], description="Shows the help embed for commands!")
-    @commands.cooldown(1,60,commands.BucketType.user)
-    async def help(self,ctx, *, entity=None):
-        if not entity:
-            await self.setup_help_pag(ctx)
-        
-        else:
-            cog = self.bot.get_cog(entity)
-            if cog:
-                await self.setup_help_pag(ctx, cog, f"{cog.qualified_name}'s commands.")
+    @staticmethod
+    def _describe(ctx, command: commands.Command, detailed: bool) -> str:
+        text = f"• **__{command.name}__**\n{command.description or command.short_doc or 'No description.'}"
+        if detailed:
+            text += f"\n```{ctx.prefix}{command.qualified_name} {command.signature}```"
+            if command.aliases:
+                text += f"Aliases: {', '.join(command.aliases)}"
+        return text
 
-            else:
-                command = self.bot.get_command(entity)
-                if command:
-                    await self.setup_help_pag(ctx, command, command.name)
+    async def _send_pages(self, ctx, command_list: List[commands.Command], title: str, detailed: bool = False):
+        if not command_list:
+            return await ctx.send(embed=helpers.error_embed("There are no commands you can use here."))
+        pages = [
+            "\n".join(self._describe(ctx, command, detailed) for command in command_list[i:i + COMMANDS_PER_PAGE])
+            for i in range(0, len(command_list), COMMANDS_PER_PAGE)
+        ]
+        await HelpPaginator(title=title, color=helpers.COLOUR_ERROR, entries=pages, length=1).start(ctx)
 
-                else:
-                    await ctx.send("Entity not found.")
+    @commands.command(name="help", aliases=["cmds"], description="Shows the commands, a category or one command.")
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def help(self, ctx, *, entity: str = None):
+        if entity is None:
+            return await self._send_pages(ctx, await self._usable_commands(self.bot, ctx), self.bot.description)
 
-    
+        cog = next((cog for name, cog in self.bot.cogs.items() if name.lower() == entity.lower()), None)
+        if cog is not None:
+            return await self._send_pages(ctx, await self._usable_commands(cog, ctx), f"{cog.qualified_name} commands")
+
+        command = self.bot.get_command(entity)
+        if command is not None:
+            return await self._send_pages(ctx, [command], command.qualified_name, detailed=True)
+
+        await ctx.send(embed=helpers.error_embed(f"No command or category called **{entity}**."))
+
 
 def setup(bot):
     bot.add_cog(Help(bot))

@@ -1,126 +1,109 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-import sys, os, random, youtube_dl, discord, asyncio, ctypes, io, datetime
-from colorama import Fore
-from gtts import gTTS
-ytdl_format_options = {
-    'format': 'bestaudio/best',
-    'restrictfilenames': True,
-    'noplaylist': True,
-    'nocheckcertificate': True,
-    'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'source_address': '0.0.0.0'
-}
-ffmpeg_options = {
-    'options': '-vn'
-}
-def RandomColor(): 
-    randcolor = discord.Color(random.randint(0x000000, 0xFFFFFF))
-    return randcolor
+"""Embed builders and console helpers shared by the bot and its cogs."""
+import datetime
+import math
+import os
+import random
+import sys
 
-def print_percent_done(index, total, bar_len, title):
-    percent_done = (index+1)/total*100
-    percent_done = round(percent_done, 1)
-    done = round(percent_done/(100/bar_len))
-    togo = bar_len-done
-    done_str = '█'*int(done)
-    togo_str = '░'*int(togo)
-    print(f'{title}: [{done_str}{togo_str}] {percent_done}% ', end='\r')
-    if round(percent_done) == 100:
-        print('')
-async def do_tts(message):
-    f = io.BytesIO()
-    tts = gTTS(text=message.lower(), lang="en-US")
-    tts.write_to_fp(f)
-    f.seek(0)
-    return f
-def date_send(text):
-    print(f"[!] {text}")
-def title(text):
-    if sys.platform.startswith("win"): 
+import discord
+from colorama import Fore
+
+COLOUR_NEUTRAL = 0x36393F
+COLOUR_SUCCESS = 0x43B581
+COLOUR_ERROR = 0xF04947
+
+
+# ---------------------------------------------------------------------- embeds
+def info_embed(text: str) -> discord.Embed:
+    return discord.Embed(description=text, colour=COLOUR_NEUTRAL)
+
+
+def success_embed(text: str) -> discord.Embed:
+    return discord.Embed(description=f"✅ {text}", colour=COLOUR_SUCCESS)
+
+
+def error_embed(text: str) -> discord.Embed:
+    return discord.Embed(description=f"❌ {text}", colour=COLOUR_ERROR)
+
+
+def random_colour() -> discord.Colour:
+    return discord.Colour(random.randint(0x000000, 0xFFFFFF))
+
+
+def icon(asset):
+    """Return an asset URL usable as an embed icon, or ``Embed.Empty`` when there is none
+    (e.g. a server without an icon). discord.py 1.7 would otherwise send an empty URL."""
+    return str(asset) if asset else discord.Embed.Empty
+
+
+def set_thumbnail(embed: discord.Embed, asset) -> discord.Embed:
+    """Set the thumbnail only when the asset exists."""
+    if asset:
+        embed.set_thumbnail(url=str(asset))
+    return embed
+
+
+def numbered_mentions(ids, kind: str = "@") -> str:
+    """Render IDs as a numbered list of user (``@``) or channel (``#``) mentions."""
+    return "\n".join(f"**{index}.** <{kind}{item}>" for index, item in enumerate(ids, start=1))
+
+
+# ---------------------------------------------------------------------- time
+def humanize_seconds(seconds: float) -> str:
+    """Turn a number of seconds into text such as ``1 hour, 2 minutes and 5 seconds``."""
+    seconds = math.ceil(seconds)
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    parts = [
+        f"{value} {unit}{'' if value == 1 else 's'}"
+        for value, unit in ((days, "day"), (hours, "hour"), (minutes, "minute"), (seconds, "second"))
+        if value
+    ]
+    if not parts:
+        return "0 seconds"
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def uptime_since(start: datetime.datetime) -> str:
+    return humanize_seconds((datetime.datetime.utcnow() - start).total_seconds())
+
+
+# ------------------------------------------------------------------- console
+def set_console_title(text: str) -> None:
+    if sys.platform.startswith("win"):
+        import ctypes
+
         ctypes.windll.kernel32.SetConsoleTitleW(text)
 
-def getembed(text):
-    #return f"""```{text}```"""
-    embed = discord.Embed(
-        description=text,
-        color=0x36393F
-    )
-    return embed
 
-def error(text):
-    embed = discord.Embed(
-        description="❌ " + text,
-        color=0xf04947
-    )
-    return embed
-
-def success(text):
-    embed = discord.Embed(
-        description= "✅ " + text,
-        colour=0x43b581
-    )
-    return embed
-
-def sort_users(json, server, user): 
-    try: 
-        return int(json['guild'][str(server.guild.id)]['messages'][str(user)]['message_count'])
-    except KeyError: 
-        return 0
-    
-ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.5):
-        super().__init__(source, volume)
-        self.data = data
-        self.title = data.get('title')
-        self.url = data.get('url')
-    
-    @classmethod
-    async def from_url(cls, url, *, loop=None, stream=False):
-        loop = loop or asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-
-        if 'entries' in data:  # type: ignore
-            data = data['entries'][0]
-
-        filename = data['url'] if stream else ytdl.prepare_filename(data)
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+def clear_console() -> None:
+    os.system("cls" if sys.platform.startswith("win") else "clear")
 
 
-def clear():
-    if sys.platform == "win32" or sys.platform == "win64":
-        os.system("cls")
-    else:
-       os.system("clear")
+def progress_bar(index: int, total: int, title: str, width: int = 50) -> None:
+    """Print a single-line progress bar; ``index`` is zero based."""
+    percent = (index + 1) / total * 100
+    done = round(percent / (100 / width))
+    print(f"{title}: [{'█' * done}{'░' * (width - done)}] {percent:.1f}% ", end="\r")
+    if index + 1 == total:
+        print()
 
-def asciigen(length):
-    asc = ''
-    for x in range(int(length)):
-        num = random.randrange(13000)
-        asc = asc + chr(num)
-    return asc
 
-def ui(self,auth):
-    print(f"""
-{Fore.CYAN}
-
+def print_banner() -> None:
+    print(f"""{Fore.CYAN}
   █████▒▓█████  ███▄    █ ▓█████▄  ██▓
 ▓██   ▒ ▓█   ▀  ██ ▀█   █ ▒██▀ ██▌▓██▒
 ▒████ ░ ▒███   ▓██  ▀█ ██▒░██   █▌▒██▒
-░▓█▒  ░ ▒▓█  ▄ ▓██▒  ▐▌██▒░▓█▄   ▌░██░      by extort#4444
+░▓█▒  ░ ▒▓█  ▄ ▓██▒  ▐▌██▒░▓█▄   ▌░██░      by @1v1
 ░▒█░    ░▒████▒▒██░   ▓██░░▒████▓ ░██░
- ▒ ░    ░░ ▒░ ░░ ▒░   ▒ ▒  ▒▒▓  ▒ ░▓  
+ ▒ ░    ░░ ▒░ ░░ ▒░   ▒ ▒  ▒▒▓  ▒ ░▓
  ░       ░ ░  ░░ ░░   ░ ▒░ ░ ▒  ▒  ▒ ░
  ░ ░       ░      ░   ░ ░  ░ ░  ░  ▒ ░
-           ░  ░         ░    ░     ░  
-                           ░                                              
-Date: {datetime.date.today().strftime('%d, %B %Y')}
-{Fore.RESET}
-""")
-
-
+           ░  ░         ░    ░     ░
+                           ░
+Date: {datetime.date.today().strftime('%d %B %Y')}
+{Fore.RESET}""")

@@ -1,23 +1,23 @@
-"""Permission checks shared by every cog."""
-import aiosqlite
+"""Permission checks.
 
-from utils.config import OWNER_IDS, db_path
+* Bot owners come from ``OWNER_IDS`` (or the application owner when none are set)
+  and use discord.py's built-in ``commands.is_owner()``.
+* Bot admins are per-server and managed with the ``add_owner`` / ``remove_owner``
+  commands. Bot owners are admins everywhere.
+"""
+from discord.ext import commands
 
 
-async def is_owner(ctx):
-    """True for the bot owner(s) listed in the config."""
-    return ctx.author.id in OWNER_IDS
-
-
-async def is_admin(ctx):
-    """True for the bot owner(s) and for users added with the add_owner command."""
-    if ctx.author.id in OWNER_IDS:
+async def user_is_admin(ctx: commands.Context) -> bool:
+    if await ctx.bot.is_owner(ctx.author):
         return True
-    if ctx.guild is None:
-        return False
-    async with aiosqlite.connect(db_path("admin")) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS owners (guild INTEGER, user INTEGER)")
-        async with db.execute(
-            "SELECT 1 FROM owners WHERE guild = ? AND user = ?", (ctx.guild.id, ctx.author.id)
-        ) as cursor:
-            return await cursor.fetchone() is not None
+    return ctx.guild is not None and ctx.bot.db.is_admin(ctx.guild.id, ctx.author.id)
+
+
+def is_admin():
+    async def predicate(ctx: commands.Context) -> bool:
+        if await user_is_admin(ctx):
+            return True
+        raise commands.CheckFailure("You need to be a bot admin in this server to use that command.")
+
+    return commands.check(predicate)

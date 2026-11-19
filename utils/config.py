@@ -1,49 +1,39 @@
-"""Central configuration: paths, owner IDs and the bot token.
+"""Settings, paths and constants.
 
-Values come from environment variables first, then ``info/config.json``.
-Nothing secret lives in the source tree.
+Secrets are read from environment variables first, then ``info/config.json``,
+so nothing sensitive lives in the source tree.
 """
 import json
 import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
 COGS_DIR = BASE_DIR / "cogs"
 CONFIG_FILE = BASE_DIR / "info" / "config.json"
-STATUS_FILE = str(DATA_DIR / "status.json")
+DATA_DIR = BASE_DIR / "data"
+DB_FILE = DATA_DIR / "fendi.db"
+STATUS_FILE = DATA_DIR / "status.json"
 
-DATA_DIR.mkdir(exist_ok=True)
-
-_DEFAULT_STATUS = {"default": "fendi", "cycle_status": "off", "delay": 10, "cycle": []}
-if not Path(STATUS_FILE).exists():
-    Path(STATUS_FILE).write_text(json.dumps(_DEFAULT_STATUS, indent=4), encoding="utf-8")
+STREAM_URL = "https://twitch.tv/fendi"
+SUPPORT_INVITE = "https://discord.gg/fendi"
 
 
-def _load_file() -> dict:
+def _load_config_file() -> dict:
     try:
         return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
 
 
-CONFIG = _load_file()
-
-TOKEN = os.getenv("DISCORD_TOKEN") or CONFIG.get("token")
-WEBHOOK = os.getenv("WEBHOOK_URL") or CONFIG.get("webhook", "")
-DEFAULT_PREFIX = CONFIG.get("prefix", ">")
-
-
-def _parse_owner_ids() -> frozenset:
-    raw = os.getenv("OWNER_IDS") or CONFIG.get("owners") or []
+def _parse_ids(raw) -> frozenset:
+    """Accept a list, a single ID or a comma separated string and keep only numeric IDs."""
     if isinstance(raw, (str, int)):
         raw = str(raw).split(",")
-    return frozenset(int(x) for x in map(str, raw) if x.strip().isdigit())
+    return frozenset(int(item) for item in map(str, raw or []) if item.strip().isdigit())
 
 
-OWNER_IDS = _parse_owner_ids()
+_CONFIG = _load_config_file()
 
-
-def db_path(name: str) -> str:
-    """Return the path of ``data/<name>.db``."""
-    return str(DATA_DIR / f"{name}.db")
+TOKEN = os.getenv("DISCORD_TOKEN") or _CONFIG.get("token")
+DEFAULT_PREFIX = os.getenv("DEFAULT_PREFIX") or _CONFIG.get("prefix", ">")
+OWNER_IDS = _parse_ids(os.getenv("OWNER_IDS") or _CONFIG.get("owners"))

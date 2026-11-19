@@ -1,9 +1,5 @@
 discord.py==1.7.3
 aiohttp>=3.6,<3.8
-aiosqlite
+aiosqlite>=0.17
 buttons
 colorama
-gTTS
-python-dateutil
-requests
-youtube_dl
