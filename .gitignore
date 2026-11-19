@@ -1,44 +1,31 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 venv/
+.venv/
 env/
-ENV/
 
-# Database files
+# Secrets and local configuration
+info/config.json
+.env
+.env.*
+!.env.example
+
+# Runtime data (databases, status, logs)
+data/
 *.db
 *.sqlite
 *.sqlite3
-
-# Configuration files with credentials
-info/config.json
-data/config.json
-config.json
-
-# Environment files
-.env
-.env.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs
 *.log
 logs/
 
-# OS
+# Deployment leftovers
+.pm2/
+vps/
+extra/
+
+# Editors / OS
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
-
-# PM2
-.pm2/
-
-# Extra files
-extra/

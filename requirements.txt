@@ -1,8 +1,9 @@
-discord==1.7.3
 discord.py==1.7.3
-pymongo
-colorama
+aiohttp>=3.6,<3.8
 aiosqlite
-youtube_dl
-gtts
 buttons
+colorama
+gTTS
+python-dateutil
+requests
+youtube_dl

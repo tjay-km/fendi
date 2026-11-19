@@ -1,74 +1,73 @@
-import discord, sys, os, logging, colorama, json, datetime, requests, re, pymongo, aiosqlite, asyncio
+"""Fendi - a Discord bot (discord.py 1.7.x).
+
+Run with ``python fendi.py``. See README.md for configuration.
+"""
+import datetime
+import logging
+
+import colorama
+import discord
 from colorama import Fore
-from urllib.parse import quote_plus
 from discord.ext import commands
-from cogs import extort
-from utils import util
+
+from utils import helpers
+from utils.config import COGS_DIR, TOKEN
+from utils.prefix import get_prefix
+
 colorama.init()
 
-# Try environment variables first, then config file
-token = os.getenv('DISCORD_TOKEN')
-if not token:
-    config_path = os.path.join(os.path.dirname(__file__), 'info', 'config.json')
-    if os.path.exists(config_path):
-        info = json.loads(open(config_path, "r").read())
-        token = info['token']
-    else:
-        raise ValueError("DISCORD_TOKEN environment variable not set and config.json not found")
+logging.basicConfig(
+    format=f"[{Fore.RED}%(asctime)s{Fore.RESET}] %(message)s",
+    datefmt="%d-%m-%Y %H:%M:%S",
+    level=logging.INFO,
+)
 
-async def get_prefix(client, message):
-    db_path = os.path.join(os.path.dirname(__file__), 'data', 'prefix.db')
-    async with aiosqlite.connect(db_path) as db:
-        async with db.cursor() as cursor:
-            await cursor.execute("SELECT prefix FROM prefixes WHERE guild = ?", (message.guild.id,))
-            data = await cursor.fetchone()
-            if data: 
-                return data[0]
-            else: 
-                await cursor.execute("REPLACE INTO prefixes (prefix, guild) VALUES (?, ?)",(">", message.guild.id,))
-                await cursor.execute("SELECT prefix FROM prefixes WHERE guild = ?",(message.guild.id,))
-                data = await cursor.fetchone()
-                if data: 
-                    await cursor.execute("UPDATE prefixes SET prefix = ? WHERE guild = ?",(">",message.guild.id,))
-                return ">"
-        
-webhook = os.getenv('WEBHOOK_URL')
-if not webhook and 'info' in locals():
-    webhook = info.get('webhook', '')
-logging.basicConfig(format=f"[{Fore.RED}%(asctime)s{Fore.RESET}] %(message)s", datefmt="%d-%m-%Y %H:%M:%S", level=logging.INFO)
-client = commands.Bot(command_prefix=get_prefix,help_command=None,self_bot=False, intents=discord.Intents.all())  # type: ignore
-extort.title("Fendi Bot")
+client = commands.Bot(
+    command_prefix=get_prefix,
+    help_command=None,
+    self_bot=False,
+    intents=discord.Intents.all(),
+)
+helpers.title("Fendi Bot")
 
-start = datetime.datetime.now() 
+start = datetime.datetime.now()
+
 
 @client.event
 async def on_message(message):
     await client.process_commands(message)
-    # if message.author.id == client.user.id:
-    #     return
-    
+
     if client.user.mention in message.content:
-        text = f"```prefix is {await get_prefix(client,message)}```"
-        try:
-            await message.edit(content=text,delete_after=30) 
-        except:
-            await message.channel.send(text)
-    
+        prefix = await get_prefix(client, message)
+        await message.channel.send(f"```prefix is {prefix}```", delete_after=30)
+
+
 @client.event
 async def on_guild_join(guild):
     logging.info(f"Just added to {guild.name}, {guild.id} with {len(guild.members)} members")
 
+
 @client.event
 async def on_guild_remove(guild):
     logging.info(f"Just removed from {guild.name}, {guild.id} with {len(guild.members)} members")
-            
-    
+
+
+def load_cogs():
+    cogs = sorted(p.stem for p in COGS_DIR.glob("*.py") if not p.name.startswith("__"))
+    for index, name in enumerate(cogs):
+        helpers.print_percent_done(index, len(cogs), 50, "Loading up the cogs...")
+        try:
+            client.load_extension(f"cogs.{name}")
+            print(f"{name}.py loaded")
+        except Exception as exc:
+            logging.error(f"Could not load cogs.{name}: {exc}")
+
+
 if __name__ == "__main__":
-    cogs_dir = os.path.join(os.path.dirname(__file__), 'cogs')
-    cogs = os.listdir(cogs_dir)
-    for x in range(len(cogs)):
-        extort.print_percent_done(x, len(cogs), 50, "Loading up the cogs...")
-        if cogs[x].endswith(".py") and not cogs[x].startswith("__") and not "extort" in cogs[x]:
-            client.load_extension(f"cogs.{cogs[x][:-3]}")
-            print(f"{cogs[x]} loaded")
-    client.run(token,bot=True,reconnect=True)
+    if not TOKEN:
+        raise SystemExit(
+            "No bot token found. Set DISCORD_TOKEN or copy info/config.example.json "
+            "to info/config.json and fill it in."
+        )
+    load_cogs()
+    client.run(TOKEN, bot=True, reconnect=True)
