@@ -32,7 +32,7 @@ The default prefix is `>`. You can also mention the bot instead of using a prefi
 | Ranking | `rank`, `leaderboard`, `whitelist`, `blacklist`, `whitelisted` |
 | Info | `ping`, `uptime`, `stats`, `invite`, `about`, `serverinfo`, `membercount`, `servericon`, `serverbanner`, `userinfo`, `roleinfo`, `avatar` |
 | Utility | `enlarge`, `urban`, `revav`, `snipe`, `editsnipe` |
-| Fun | `pp`, `iq`, `thotrate`, `gayrate`, `height` |
+| Fun | `pp`, `iq`, `height` |
 | Status (owner) | `cycles`, `cycles_add`, `cycles_remove`, `cycles-delay`, `cycle`, `cds` |
 | Owner | `reset_lb`, `reset_user`, `servers`, `sleave`, `reload`, `reloadall`, `toggle`, `logout` |
 

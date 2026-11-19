@@ -35,18 +35,6 @@ class Fun(commands.Cog):
         _, subject = _subject(ctx, member)
         await self._send_rating(ctx, f"{subject} working with an IQ of **{random.randint(1, 200)}**.")
 
-    @commands.command(name="thotrate", aliases=["thot"], description="Rates how much of a thot a member is.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def thotrate(self, ctx, *, member: discord.Member = None):
-        _, subject = _subject(ctx, member)
-        await self._send_rating(ctx, f"{subject} **{random.randint(0, 100)}%** thot.")
-
-    @commands.command(name="gayrate", aliases=["gay", "howgay"], description="Rates how gay a member is.")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def gayrate(self, ctx, *, member: discord.Member = None):
-        _, subject = _subject(ctx, member)
-        await self._send_rating(ctx, f"{subject} **{random.randint(0, 100)}%** gay \U0001f308")
-
     @commands.command(name="height", description="Guesses a member's height.")
     @commands.cooldown(1, 5, commands.BucketType.user)
     async def height(self, ctx, *, member: discord.Member = None):

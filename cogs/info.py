@@ -74,7 +74,6 @@ class Info(commands.Cog):
                         inline=True)
         embed.add_field(name="Uptime", value=helpers.uptime_since(self.bot.start_time), inline=False)
         embed.add_field(name="Statistics", value=f"**{len(self.bot.guilds)}** servers / **{users}** users", inline=False)
-        embed.add_field(name="Thanks", value="Sipher, Nina, Fez", inline=False)
         embed.add_field(name="Links", value=f"[Invite]({_invite_url(self.bot)}) | [Support server]({SUPPORT_INVITE})",
                         inline=False)
         await ctx.send(embed=embed)
